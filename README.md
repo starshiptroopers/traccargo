@@ -3,4 +3,4 @@ Traccargo is the Golang library for fetching devices information and device posi
 
 It supports only several requests to tracckar api: devices and device positions
 
-Also, traccargo support traccar websocket feed for continuous live device positions updates 
+Also, traccargo support traccar websocket feed for live location updates and events.
