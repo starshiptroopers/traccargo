@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/go-querystring/query"
+	"github.com/starshiptroopers/traccargo/models"
 	"golang.org/x/net/websocket"
 	"io"
 	"io/ioutil"
@@ -23,7 +24,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"traccargo/models"
 )
 
 type traccar struct {

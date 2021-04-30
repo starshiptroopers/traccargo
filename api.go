@@ -4,7 +4,7 @@
 
 package traccargo
 
-import "traccargo/models"
+import "github.com/starshiptroopers/traccargo/models"
 
 type encoding uint8
 
