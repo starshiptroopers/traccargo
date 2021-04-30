@@ -1,4 +1,4 @@
-module traccar
+module traccargo
 
 go 1.13
 

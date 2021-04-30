@@ -7,7 +7,7 @@
 // It supports only several requests to tracckar api: devices and device positions
 // Also, traccargo support traccar websocket feed for continuous live device positions updates
 
-package traccar
+package traccargo
 
 import (
 	"encoding/json"
@@ -23,7 +23,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"traccar/src/traccar/models"
+	"traccargo/models"
 )
 
 type traccar struct {
@@ -33,29 +33,26 @@ type traccar struct {
 	sessionCookies         []*http.Cookie
 	httpClient             *http.Client
 	ws                     *websocket.Conn
-	wsMutex					sync.Mutex
-	wsSubscription		   func(message *WsMessage)
-	LogWriter              io.Writer //for debug purpose. All communication events is written to this io.Writer if defined
+	wsMutex                sync.Mutex
+	wsSubscription         func(message *WsMessage)
+	LogWriter              io.Writer //for debug purpose. All significant operation and error events is written to this io.Writer if defined
 	LogCommunicationWriter io.Writer //for debug purpose. All JSON responses will be written to this io.Writer if defined
-	sync.Mutex
 }
 
-var	timeout	= time.Second
-var	retries = 3
-var logCommunicationWriter 	io.Writer = nil
-var logWriter 				io.Writer = nil
+var timeout = time.Second
+var retries = 3
+var logCommunicationWriter io.Writer = nil
+var logWriter io.Writer = nil
 
 var (
 	TRACCAR_ERROR_UNREACHABLE = errors.New("server is unreachable")
-	TRACCAR_ERROR_AUTH		  = errors.New("server auth is failed")
-	TRACCAR_ERROR_FAILED	  = errors.New("operation can't be performed")
-	TRACCAR_ERROR_UNKNOWN	  = errors.New("unknown error")
+	TRACCAR_ERROR_AUTH        = errors.New("server auth is failed")
+	TRACCAR_ERROR_FAILED      = errors.New("operation can't be performed")
+	TRACCAR_ERROR_UNKNOWN     = errors.New("unknown error")
 	TRACCAR_ERROR_NOTFOUND    = errors.New("object not found")
 )
 
-/*
-	create a traccar instance
- */
+//creates a traccar instance
 func NewTraccar(apiUrl string, authToken string) (tr *traccar, err error) {
 	u, err := url.Parse(apiUrl)
 	if err != nil {
@@ -65,20 +62,20 @@ func NewTraccar(apiUrl string, authToken string) (tr *traccar, err error) {
 		url:                    u,
 		authToken:              authToken,
 		LogCommunicationWriter: logCommunicationWriter,
-		LogWriter: 				logWriter,
+		LogWriter:              logWriter,
 	}
 
 	return
 }
 
 func (t *traccar) Close() {
-	if t.ws != nil {
-		t.ws.Close()
-	}
+	t.wsClose()
 }
 
-
-func (t *traccar) SubscribeUpdates( handler func( m *WsMessage) ) (err error){
+//subscribes to live traccar updates
+//WebSocket connection to the traccar api endpoint will be established and keeps alive
+//the callback function calls on every update
+func (t *traccar) SubscribeUpdates(handler func(m *WsMessage)) (err error) {
 
 	if t.wsSubscription != nil {
 		return errors.New("already subscribed, only one subscriber is allowed")
@@ -93,6 +90,7 @@ func (t *traccar) SubscribeUpdates( handler func( m *WsMessage) ) (err error){
 	return
 }
 
+//finish websocket connection and live updates subscription
 func (t *traccar) UnsubscribeUpdates() {
 
 	t.wsSubscription = nil
@@ -101,9 +99,10 @@ func (t *traccar) UnsubscribeUpdates() {
 	return
 }
 
+//returns all devices positions from traccar server
 func (t *traccar) Positions() (positions []*models.Position, err error) {
 
-	if ! t.isAuthorized() {
+	if !t.isAuthorized() {
 		if _, err = t.Session(); err != nil {
 			return
 		}
@@ -112,7 +111,7 @@ func (t *traccar) Positions() (positions []*models.Position, err error) {
 	_, _, err = t.request(apiDescriptor{
 		method:          "GET",
 		path:            "/api/positions",
-		request: 		 nil,
+		request:         nil,
 		requestEncoding: ENC_URI,
 		response:        &positions,
 	})
@@ -123,6 +122,7 @@ func (t *traccar) Positions() (positions []*models.Position, err error) {
 	return
 }
 
+//returns the device position from traccar server
 func (t *traccar) Position(deviceId int64) (position models.Position, err error) {
 
 	positions, err := t.Positions()
@@ -138,18 +138,20 @@ func (t *traccar) Position(deviceId int64) (position models.Position, err error)
 	return
 }
 
-
+//authorizes to the traccar server and returns User object
 func (t *traccar) Session() (user models.User, err error) {
 
 	_, res, err := t.request(apiDescriptor{
-		method:          "GET",
-		path:            "/api/session",
-		request: 		 &struct {Token string `url:"token"`}{Token: t.authToken},
+		method: "GET",
+		path:   "/api/session",
+		request: &struct {
+			Token string `url:"token"`
+		}{Token: t.authToken},
 		requestEncoding: ENC_URI,
 		response:        &user,
 	})
 
-	if err == TRACCAR_ERROR_UNKNOWN && res.StatusCode == http.StatusNotFound {
+	if err == TRACCAR_ERROR_UNKNOWN && res != nil && res.StatusCode == http.StatusNotFound {
 		err = TRACCAR_ERROR_AUTH
 		return
 	}
@@ -164,8 +166,7 @@ func (t *traccar) Session() (user models.User, err error) {
 	return
 }
 
-//
-//
+//do the request to the api endpoint
 //errors TRACCAR_ERROR_UNREACHABLE | TRACCAR_ERROR_AUTH | url.Enc errors, http.request errors
 func (t *traccar) request(dscr apiDescriptor) (responsePayload interface{}, httpResponse *http.Response, err error) {
 
@@ -185,7 +186,7 @@ func (t *traccar) request(dscr apiDescriptor) (responsePayload interface{}, http
 		err = errors.New("JSON encoding isn't supported now")
 	}
 
-	req, err := http.NewRequest( dscr.method, endpointURL.String(), nil)
+	req, err := http.NewRequest(dscr.method, endpointURL.String(), nil)
 	if err != nil {
 		return
 	}
@@ -217,7 +218,7 @@ func (t *traccar) request(dscr apiDescriptor) (responsePayload interface{}, http
 	}
 
 	buff, _ := ioutil.ReadAll(httpResponse.Body)
-	httpResponse.Body.Close()
+	_ = httpResponse.Body.Close()
 
 	if httpResponse.StatusCode == http.StatusBadRequest {
 		err = TRACCAR_ERROR_FAILED
@@ -240,11 +241,10 @@ func (t *traccar) request(dscr apiDescriptor) (responsePayload interface{}, http
 	return
 }
 
-
 //return an existent or create a new websocket connection
 //err = TRACCAR_ERROR_UNREACHABLE on some kind of network connection error (timeout, wrong http response code and etc)
 //      or another error on a pre-connection stage (for example wrong uri and etc)
-func (t *traccar) wsConnect() (err error){
+func (t *traccar) wsConnect() (err error) {
 
 	if t.ws != nil {
 		return nil
@@ -265,7 +265,7 @@ func (t *traccar) wsConnect() (err error){
 			close(connectionError)
 			close(readFailed)
 		}()
-		var attempt int = 0
+		var attempt = 0
 
 		for {
 			attempt++
@@ -294,9 +294,9 @@ func (t *traccar) wsConnect() (err error){
 			go t.wsListen(readFailed)
 
 			//waiting for reading stream is die
-			<- readFailed
+			<-readFailed
 
-			if ! t.wsClose() {
+			if !t.wsClose() {
 				//finish the loop when ws is nil
 				t.debugPrint("websocket connection finished")
 				break
@@ -307,9 +307,10 @@ func (t *traccar) wsConnect() (err error){
 	}()
 
 	//wait for websocket connection is established
-	return <- connectionError
+	return <-connectionError
 }
 
+//close websocket connection
 func (t *traccar) wsClose() bool {
 	t.wsMutex.Lock()
 	defer t.wsMutex.Unlock()
@@ -330,7 +331,7 @@ func (t *traccar) wsClose() bool {
 func (t *traccar) wsPrepare() (config *websocket.Config, err error) {
 
 	//doing the authorization
-	if ! t.isAuthorized() {
+	if !t.isAuthorized() {
 		if _, err = t.Session(); err != nil {
 			return
 		}
@@ -347,7 +348,7 @@ func (t *traccar) wsPrepare() (config *websocket.Config, err error) {
 	for _, cookie := range t.sessionCookies {
 		encodedCookie := cookie.String()
 		if c := config.Header.Get("Cookie"); c != "" {
-			config.Header.Set("Cookie", c+"; " + encodedCookie)
+			config.Header.Set("Cookie", c+"; "+encodedCookie)
 		} else {
 			config.Header.Set("Cookie", encodedCookie)
 		}
@@ -355,7 +356,7 @@ func (t *traccar) wsPrepare() (config *websocket.Config, err error) {
 	return
 }
 
-//listen websocket for new messages, process message and calls subscriber callback
+//listen websocket for new messages, process message and calls subscriber callback if defined
 func (t *traccar) wsListen(close chan bool) {
 	ws := t.ws
 	for {
@@ -378,7 +379,7 @@ func (t *traccar) wsListen(close chan bool) {
 
 		if strings.Contains(err.Error(), "EOF") {
 			t.debugPrint("websocket connection closed by other side")
-		} else if ! strings.Contains(err.Error(), "closed") {
+		} else if !strings.Contains(err.Error(), "closed") {
 			t.debugPrintError(fmt.Errorf("unexpected websocket error: %v", err))
 		}
 
@@ -389,7 +390,7 @@ func (t *traccar) wsListen(close chan bool) {
 
 //do the operation with N retries on error
 //break on retries == 0 or err == nil or err == TRACCAR_ERROR_UNREACHABLE
-func (t traccar) doWithRetries(operation func() (err error), retries int) (err error) {
+func (t *traccar) doWithRetries(operation func() (err error), retries int) (err error) {
 	err = operation()
 	if err == nil || err == TRACCAR_ERROR_UNREACHABLE {
 		return
@@ -402,7 +403,7 @@ func (t traccar) doWithRetries(operation func() (err error), retries int) (err e
 	}
 }
 
-//return a full endpoint URL by it's relative path
+//return the full endpoint URL by it's relative path
 func (t *traccar) endpointURL(path string) (endpointURL *url.URL) {
 	endpointURL, err := url.Parse(path)
 	if err != nil {
@@ -411,16 +412,17 @@ func (t *traccar) endpointURL(path string) (endpointURL *url.URL) {
 	return t.url.ResolveReference(endpointURL)
 }
 
-func (t traccar) debugPrint(str string) {
+//print debug message to the log writer
+func (t *traccar) debugPrint(str string) {
 	if t.LogWriter == nil {
 		return
 	}
 
-	fmt.Fprintln(t.LogWriter, str)
+	_, _ = fmt.Fprintln(t.LogWriter, str)
 }
 
-
-func (t traccar) debugPrintJSON(prefix string, data interface{}) {
+//print JSON struct to the log writer (communication)
+func (t *traccar) debugPrintJSON(prefix string, data interface{}) {
 	if t.LogCommunicationWriter == nil {
 		return
 	}
@@ -429,13 +431,15 @@ func (t traccar) debugPrintJSON(prefix string, data interface{}) {
 	t.debugPrint(string(b))
 }
 
-func (t traccar) debugPrintError(err error) {
+//print error to the debug log writer
+func (t *traccar) debugPrintError(err error) {
 	if t.LogWriter == nil {
 		return
 	}
 	t.debugPrint(string(err.Error()))
 }
 
-func (t traccar) isAuthorized() bool {
+//returns true when traccar session is defined
+func (t *traccar) isAuthorized() bool {
 	return t.user != nil
 }
