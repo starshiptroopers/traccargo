@@ -1,4 +1,4 @@
-module traccargo
+module github.com/starshiptroopers/traccargo
 
 go 1.13
 
