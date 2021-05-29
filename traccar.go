@@ -26,7 +26,7 @@ import (
 	"time"
 )
 
-type traccar struct {
+type Traccargo struct {
 	url                    *url.URL
 	authToken              string
 	user                   *models.User
@@ -53,12 +53,12 @@ var (
 )
 
 //creates a traccar instance
-func NewTraccar(apiUrl string, authToken string) (tr *traccar, err error) {
+func NewTraccar(apiUrl string, authToken string) (tr *Traccargo, err error) {
 	u, err := url.Parse(apiUrl)
 	if err != nil {
 		return
 	}
-	tr = &traccar{
+	tr = &Traccargo{
 		url:                    u,
 		authToken:              authToken,
 		LogCommunicationWriter: logCommunicationWriter,
@@ -68,14 +68,14 @@ func NewTraccar(apiUrl string, authToken string) (tr *traccar, err error) {
 	return
 }
 
-func (t *traccar) Close() {
+func (t *Traccargo) Close() {
 	t.wsClose()
 }
 
 //subscribes to live traccar updates
 //WebSocket connection to the traccar api endpoint will be established and keeps alive
 //the callback function calls on every update
-func (t *traccar) SubscribeUpdates(handler func(m *WsMessage)) (err error) {
+func (t *Traccargo) SubscribeUpdates(handler func(m *WsMessage)) (err error) {
 
 	if t.wsSubscription != nil {
 		return errors.New("already subscribed, only one subscriber is allowed")
@@ -91,7 +91,7 @@ func (t *traccar) SubscribeUpdates(handler func(m *WsMessage)) (err error) {
 }
 
 //finish websocket connection and live updates subscription
-func (t *traccar) UnsubscribeUpdates() {
+func (t *Traccargo) UnsubscribeUpdates() {
 
 	t.wsSubscription = nil
 	t.wsClose()
@@ -100,7 +100,7 @@ func (t *traccar) UnsubscribeUpdates() {
 }
 
 //returns all devices positions from traccar server
-func (t *traccar) Positions() (positions []*models.Position, err error) {
+func (t *Traccargo) Positions() (positions []*models.Position, err error) {
 
 	if !t.isAuthorized() {
 		if _, err = t.Session(); err != nil {
@@ -123,7 +123,7 @@ func (t *traccar) Positions() (positions []*models.Position, err error) {
 }
 
 //returns the device position from traccar server
-func (t *traccar) Position(deviceId int64) (position models.Position, err error) {
+func (t *Traccargo) Position(deviceId int64) (position models.Position, err error) {
 
 	positions, err := t.Positions()
 	if err != nil {
@@ -139,7 +139,7 @@ func (t *traccar) Position(deviceId int64) (position models.Position, err error)
 }
 
 //authorizes to the traccar server and returns User object
-func (t *traccar) Session() (user models.User, err error) {
+func (t *Traccargo) Session() (user models.User, err error) {
 
 	_, res, err := t.request(apiDescriptor{
 		method: "GET",
@@ -168,7 +168,7 @@ func (t *traccar) Session() (user models.User, err error) {
 
 //do the request to the api endpoint
 //errors TRACCAR_ERROR_UNREACHABLE | TRACCAR_ERROR_AUTH | url.Enc errors, http.request errors
-func (t *traccar) request(dscr apiDescriptor) (responsePayload interface{}, httpResponse *http.Response, err error) {
+func (t *Traccargo) request(dscr apiDescriptor) (responsePayload interface{}, httpResponse *http.Response, err error) {
 
 	endpointURL := t.endpointURL(dscr.path)
 
@@ -244,7 +244,7 @@ func (t *traccar) request(dscr apiDescriptor) (responsePayload interface{}, http
 //return an existent or create a new websocket connection
 //err = TRACCAR_ERROR_UNREACHABLE on some kind of network connection error (timeout, wrong http response code and etc)
 //      or another error on a pre-connection stage (for example wrong uri and etc)
-func (t *traccar) wsConnect() (err error) {
+func (t *Traccargo) wsConnect() (err error) {
 
 	if t.ws != nil {
 		return nil
@@ -311,7 +311,7 @@ func (t *traccar) wsConnect() (err error) {
 }
 
 //close websocket connection
-func (t *traccar) wsClose() bool {
+func (t *Traccargo) wsClose() bool {
 	t.wsMutex.Lock()
 	defer t.wsMutex.Unlock()
 	if t.ws == nil {
@@ -328,7 +328,7 @@ func (t *traccar) wsClose() bool {
 }
 
 //prepare websocket config struct
-func (t *traccar) wsPrepare() (config *websocket.Config, err error) {
+func (t *Traccargo) wsPrepare() (config *websocket.Config, err error) {
 
 	//doing the authorization
 	if !t.isAuthorized() {
@@ -357,7 +357,7 @@ func (t *traccar) wsPrepare() (config *websocket.Config, err error) {
 }
 
 //listen websocket for new messages, process message and calls subscriber callback if defined
-func (t *traccar) wsListen(close chan bool) {
+func (t *Traccargo) wsListen(close chan bool) {
 	ws := t.ws
 	for {
 		var m WsMessage
@@ -390,7 +390,7 @@ func (t *traccar) wsListen(close chan bool) {
 
 //do the operation with N retries on error
 //break on retries == 0 or err == nil or err == TRACCAR_ERROR_UNREACHABLE
-func (t *traccar) doWithRetries(operation func() (err error), retries int) (err error) {
+func (t *Traccargo) doWithRetries(operation func() (err error), retries int) (err error) {
 	err = operation()
 	if err == nil || err == TRACCAR_ERROR_UNREACHABLE {
 		return
@@ -404,7 +404,7 @@ func (t *traccar) doWithRetries(operation func() (err error), retries int) (err 
 }
 
 //return the full endpoint URL by it's relative path
-func (t *traccar) endpointURL(path string) (endpointURL *url.URL) {
+func (t *Traccargo) endpointURL(path string) (endpointURL *url.URL) {
 	endpointURL, err := url.Parse(path)
 	if err != nil {
 		panic(err)
@@ -413,7 +413,7 @@ func (t *traccar) endpointURL(path string) (endpointURL *url.URL) {
 }
 
 //print debug message to the log writer
-func (t *traccar) debugPrint(str string) {
+func (t *Traccargo) debugPrint(str string) {
 	if t.LogWriter == nil {
 		return
 	}
@@ -422,7 +422,7 @@ func (t *traccar) debugPrint(str string) {
 }
 
 //print JSON struct to the log writer (communication)
-func (t *traccar) debugPrintJSON(prefix string, data interface{}) {
+func (t *Traccargo) debugPrintJSON(prefix string, data interface{}) {
 	if t.LogCommunicationWriter == nil {
 		return
 	}
@@ -432,7 +432,7 @@ func (t *traccar) debugPrintJSON(prefix string, data interface{}) {
 }
 
 //print error to the debug log writer
-func (t *traccar) debugPrintError(err error) {
+func (t *Traccargo) debugPrintError(err error) {
 	if t.LogWriter == nil {
 		return
 	}
@@ -440,6 +440,6 @@ func (t *traccar) debugPrintError(err error) {
 }
 
 //returns true when traccar session is defined
-func (t *traccar) isAuthorized() bool {
+func (t *Traccargo) isAuthorized() bool {
 	return t.user != nil
 }
